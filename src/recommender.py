@@ -271,6 +271,75 @@ def _score_core(
 
 
 # ---------------------------------------------------------------------------
+# DIVERSITY RE-RANKER
+#
+# Problem this solves: without diversity logic, all top-k slots can be filled
+# by the same artist (e.g., three LoRoom songs for a lofi profile) or the
+# same genre, producing a repetitive list.
+#
+# Algorithm — greedy slot-by-slot selection:
+#   1. Score all songs normally; sort by raw score descending.
+#   2. Pick the highest-scoring remaining song for slot #1 (no penalty yet).
+#   3. For each subsequent slot, compute each remaining song's effective score:
+#        effective = raw_score
+#                    * artist_penalty ^ (times artist already appears)
+#                    * genre_penalty  ^ (times genre already appears)
+#   4. Pick the song with the highest effective score.
+#   5. Repeat until k songs are selected.
+#
+# Penalty defaults:
+#   artist_penalty = 0.5  — a second song by the same artist is worth half
+#   genre_penalty  = 0.8  — a second song in the same genre loses 20%
+#
+# A penalty of 0.5 means the score decays by half for each repeat:
+#   1st appearance: raw_score × 1.0
+#   2nd appearance: raw_score × 0.5
+#   3rd appearance: raw_score × 0.25
+# ---------------------------------------------------------------------------
+
+def _apply_diversity_rerank(
+    scored: List[Tuple[Dict, float, str]],
+    k: int,
+    artist_penalty: float = 0.5,
+    genre_penalty: float = 0.8,
+) -> List[Tuple[Dict, float, str]]:
+    """Re-ranks a pre-scored list to enforce artist and genre diversity."""
+    remaining = list(scored)   # all songs with raw scores, already sorted
+    selected: List[Tuple[Dict, float, str]] = []
+    artist_counts: Dict[str, int] = {}
+    genre_counts: Dict[str, int] = {}
+
+    while len(selected) < k and remaining:
+        best_idx = 0
+        best_effective = -1.0
+
+        for i, (song, raw_score, explanation) in enumerate(remaining):
+            artist = song.get("artist", "")
+            genre = song.get("genre", "")
+            a_repeats = artist_counts.get(artist, 0)
+            g_repeats = genre_counts.get(genre, 0)
+            effective = raw_score * (artist_penalty ** a_repeats) * (genre_penalty ** g_repeats)
+            if effective > best_effective:
+                best_effective = effective
+                best_idx = i
+
+        song, raw_score, explanation = remaining.pop(best_idx)
+        artist = song.get("artist", "")
+        genre = song.get("genre", "")
+
+        # Annotate the explanation when a penalty was actually applied
+        penalty_applied = artist_counts.get(artist, 0) > 0 or genre_counts.get(genre, 0) > 0
+        if penalty_applied:
+            explanation += f"; diversity penalty applied (raw={raw_score})"
+
+        artist_counts[artist] = artist_counts.get(artist, 0) + 1
+        genre_counts[genre] = genre_counts.get(genre, 0) + 1
+        selected.append((song, round(best_effective, 2), explanation))
+
+    return selected
+
+
+# ---------------------------------------------------------------------------
 # OOP INTERFACE  (used by tests/test_recommender.py)
 # ---------------------------------------------------------------------------
 
@@ -375,13 +444,29 @@ def score_song(user_prefs: Dict, song: Dict,
     )
 
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5,
-                    mode: str = "balanced") -> List[Tuple[Dict, float, str]]:
-    """Scores every song, sorts descending, returns top-k as (song, score, explanation) tuples."""
+def recommend_songs(
+    user_prefs: Dict,
+    songs: List[Dict],
+    k: int = 5,
+    mode: str = "balanced",
+    diversity: bool = True,
+    artist_penalty: float = 0.5,
+    genre_penalty: float = 0.8,
+) -> List[Tuple[Dict, float, str]]:
+    """Scores every song, sorts descending, and returns top-k results.
+
+    When diversity=True (default), applies a greedy re-ranking pass that
+    penalizes repeated artists (artist_penalty per repeat) and genres
+    (genre_penalty per repeat) so the final list is more varied.
+    When diversity=False, returns the raw top-k with no penalty applied.
+    """
     scored = []
     for song in songs:
         score, reasons = score_song(user_prefs, song, mode)
         explanation = "; ".join(reasons) if reasons else "no matching features"
         scored.append((song, score, explanation))
     scored.sort(key=lambda item: item[1], reverse=True)
+
+    if diversity:
+        return _apply_diversity_rerank(scored, k, artist_penalty, genre_penalty)
     return scored[:k]

@@ -118,13 +118,16 @@ vague_user = {
 
 
 def print_recommendations(label: str, user_prefs: dict, songs: list,
-                          k: int = 3, mode: str = "balanced") -> None:
+                          k: int = 3, mode: str = "balanced",
+                          diversity: bool = True) -> None:
     """Prints a clean, readable block of recommendations for one user profile."""
-    recommendations = recommend_songs(user_prefs, songs, k=k, mode=mode)
+    recommendations = recommend_songs(user_prefs, songs, k=k, mode=mode,
+                                      diversity=diversity)
 
+    diversity_label = "ON" if diversity else "OFF"
     print(f"\n{'=' * 60}")
     print(f"  PROFILE : {label}")
-    print(f"  MODE    : {mode.upper()}")
+    print(f"  MODE    : {mode.upper():<16}  DIVERSITY: {diversity_label}")
     print(f"  GENRE   : {user_prefs.get('genre', 'any').upper():<10}  "
           f"MOOD: {user_prefs.get('mood', '-').upper():<10}  "
           f"ENERGY: {user_prefs.get('target_energy', '-')}")
@@ -313,6 +316,20 @@ def main() -> None:
     # Run the High-Energy Pop profile under all four modes so the effect of
     # each strategy is visible side by side in the terminal output.
     # -----------------------------------------------------------------------
+    # -----------------------------------------------------------------------
+    # DIVERSITY PENALTY COMPARISON
+    # The Chill Lofi profile is the clearest demonstration: without diversity
+    # enforcement all three top slots go to LoRoom (same artist). With
+    # diversity ON, the artist_penalty=0.5 halves the effective score for
+    # each additional LoRoom song, pulling in songs from other artists.
+    # -----------------------------------------------------------------------
+    print("\n" + "#" * 60)
+    print("  DIVERSITY PENALTY — before / after")
+    print("  Profile: Chill Lofi (exposes the LoRoom repeat problem)")
+    print("#" * 60)
+    print_recommendations("Chill Lofi", chill_lofi, songs, k=5, diversity=False)
+    print_recommendations("Chill Lofi", chill_lofi, songs, k=5, diversity=True)
+
     print("\n" + "#" * 60)
     print("  SCORING MODE COMPARISON")
     print("  Same profile (High-Energy Pop) — four different strategies")
