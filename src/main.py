@@ -29,34 +29,52 @@ except ModuleNotFoundError:
 #   target_speechiness (float) -- 1.0 = wants rap/spoken word style
 # ---------------------------------------------------------------------------
 
-# Profile A: Late-night study session
-# Wants quiet, wordless background music -- high instrumentalness is critical
-study_user = {
+# Profile 1: High-Energy Pop
+# Upbeat, danceable pop -- high energy, high valence, very low instrumentalness
+high_energy_pop = {
+    "genre": "pop",
+    "mood": "happy",
+    "target_energy": 0.85,
+    "target_valence": 0.82,
+    "likes_acoustic": False,
+    "target_acousticness": 0.15,
+    "target_instrumentalness": 0.00,
+    "target_speechiness": 0.06,
+}
+
+# Profile 2: Chill Lofi
+# Quiet, wordless background music for studying -- high instrumentalness is critical
+chill_lofi = {
     "genre": "lofi",
     "mood": "focused",
     "target_energy": 0.40,
     "target_valence": 0.58,
     "likes_acoustic": True,
+    "target_acousticness": 0.78,
     "target_instrumentalness": 0.88,
     "target_speechiness": 0.03,
 }
 
-# Profile B: Morning workout
-# Wants loud, fast, aggressive tracks -- low acousticness and high energy are critical
-workout_user = {
+# Profile 3: Deep Intense Rock
+# Heavy, aggressive tracks -- high energy, low valence, loud and electric
+deep_intense_rock = {
     "genre": "rock",
     "mood": "intense",
     "target_energy": 0.91,
-    "target_valence": 0.50,
+    "target_valence": 0.48,
     "likes_acoustic": False,
+    "target_acousticness": 0.10,
     "target_instrumentalness": 0.02,
     "target_speechiness": 0.06,
 }
 
-# Profile C: Sunday afternoon (the "edge case" profile)
-# Only specifies energy and mood -- deliberately narrow to expose system weaknesses
-# CRITIQUE TEST: can this profile tell apart intense rock from chill lofi?
-# Answer: NO -- see critique section below
+# Profile 4: Late-night study session (kept for edge case critique)
+study_user = chill_lofi
+
+# Profile 5: Morning workout (kept for backwards compatibility)
+workout_user = deep_intense_rock
+
+# Profile 6: Vague chill listener (edge case -- no genre set)
 vague_user = {
     "genre": "any",
     "mood": "chill",
@@ -129,14 +147,96 @@ def main() -> None:
     songs = load_songs("data/songs.csv")
     print(f"\nLoaded songs: {len(songs)}")
 
-    profiles = {
-        "Study Session (lofi focused)": study_user,
-        "Morning Workout (rock intense)": workout_user,
-        "Vague Chill Listener (edge case)": vague_user,
+    # --- Standard profiles ---
+    standard_profiles = {
+        "High-Energy Pop": high_energy_pop,
+        "Chill Lofi": chill_lofi,
+        "Deep Intense Rock": deep_intense_rock,
     }
 
-    for label, user_prefs in profiles.items():
-        print_recommendations(label, user_prefs, songs, k=3)
+    # --- Adversarial / edge case profiles ---
+    # Each one is designed to expose a specific weakness in the scoring logic.
+
+    # EDGE CASE 1: Conflicting energy + mood
+    # energy=0.9 screams "intense" but mood="sad" — no song in the catalog is both.
+    # Expected failure: system is forced to choose between high energy OR sad mood,
+    # it cannot satisfy both. Watch which dimension wins.
+    conflicting_energy_mood = {
+        "genre": "blues",
+        "mood": "sad",
+        "target_energy": 0.90,
+        "target_valence": 0.20,
+        "likes_acoustic": False,
+        "target_acousticness": 0.10,
+        "target_instrumentalness": 0.10,
+        "target_speechiness": 0.05,
+    }
+
+    # EDGE CASE 2: Ghost genre (not in catalog)
+    # Genre "metal" does not exist in the 18-song catalog.
+    # Expected failure: zero genre points for every song — system falls back to
+    # mood and energy only, recommending songs the user almost certainly doesn't want.
+    ghost_genre = {
+        "genre": "metal",
+        "mood": "intense",
+        "target_energy": 0.95,
+        "target_valence": 0.30,
+        "likes_acoustic": False,
+        "target_acousticness": 0.05,
+        "target_instrumentalness": 0.05,
+        "target_speechiness": 0.05,
+    }
+
+    # EDGE CASE 3: Contradictory acousticness + instrumentalness
+    # Wants fully instrumental (instrumentalness=1.0) but also fully electronic
+    # (acousticness=0.0). In the catalog, instrumental songs are almost always
+    # acoustic (lofi, classical, ambient). This profile wants something that
+    # doesn't exist: a silent EDM track with no vocals.
+    impossible_combo = {
+        "genre": "edm",
+        "mood": "euphoric",
+        "target_energy": 0.97,
+        "target_valence": 0.83,
+        "likes_acoustic": False,
+        "target_acousticness": 0.02,
+        "target_instrumentalness": 1.00,
+        "target_speechiness": 0.02,
+    }
+
+    # EDGE CASE 4: The "Middle of Everything" user
+    # Every preference is set to the midpoint (0.5).
+    # Expected failure: no song scores badly, but no song scores well either.
+    # The system returns whoever happened to land closest to dead-center —
+    # revealing that "average" preferences produce meaningless recommendations.
+    middle_of_everything = {
+        "genre": "any",
+        "mood": "",
+        "target_energy": 0.50,
+        "target_valence": 0.50,
+        "likes_acoustic": False,
+        "target_acousticness": 0.50,
+        "target_instrumentalness": 0.50,
+        "target_speechiness": 0.05,
+    }
+
+    adversarial_profiles = {
+        "EDGE 1 — Conflicting Energy + Sad Mood": conflicting_energy_mood,
+        "EDGE 2 — Ghost Genre (metal, not in catalog)": ghost_genre,
+        "EDGE 3 — Impossible Combo (EDM + fully instrumental)": impossible_combo,
+        "EDGE 4 — Middle of Everything (all 0.5)": middle_of_everything,
+    }
+
+    print("\n" + "#" * 60)
+    print("  STANDARD PROFILES")
+    print("#" * 60)
+    for label, user_prefs in standard_profiles.items():
+        print_recommendations(label, user_prefs, songs, k=5)
+
+    print("\n" + "#" * 60)
+    print("  ADVERSARIAL / EDGE CASE PROFILES")
+    print("#" * 60)
+    for label, user_prefs in adversarial_profiles.items():
+        print_recommendations(label, user_prefs, songs, k=5)
 
 
 if __name__ == "__main__":

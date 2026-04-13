@@ -144,13 +144,29 @@ You can add more tests in `tests/test_recommender.py`.
 
 ## Experiments You Tried
 
-The screenshots below show the terminal output from running `python -m src.main`, displaying song titles, scores, score bars, and the reasons behind each recommendation for all three user profiles.
+### Standard Profiles — Top 5 Results
+
+The screenshots below show terminal output for the three main user profiles (High-Energy Pop, Chill Lofi, Deep Intense Rock) run with `python src/main.py`.
 
 ![Terminal Output 1](Screenshot1.png)
 ![Terminal Output 2](Screenshot 2.png)
 ![Terminal Output 3](Screenshot3.png)
 ![Terminal Output 4](Screenshot4.png)
 ![Terminal Output 5](Screenshot5.png)
+
+### Adversarial / Edge Case Stress Tests
+
+These screenshots show the four adversarial profiles designed to expose weaknesses in the scoring logic — conflicting preferences, ghost genres, impossible feature combinations, and all-neutral preferences.
+
+![Stress Test 1](Screenshot stress test 1.png)
+![Stress Test 2](Screenshot stress test 2.png)
+![Stress Test 3](Screenshot stress test 3.png)
+![Stress Test 4](Screenshot stress test 4.png)
+![Stress Test 5](Screenshot stress test 5.png)
+![Stress Test 6](Screenshot stress test 6.png)
+![Stress Test 7](Screenshot stress test 7.png)
+![Stress Test 8](Screenshot stress test 8.png)
+![Stress Test 9](Screenshot stress test 9.png)
 
 ---
 
