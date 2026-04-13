@@ -46,7 +46,23 @@ The system works well for users with clear, specific preferences — particularl
 
 ## 7. Evaluation
 
-Seven user profiles were tested: three standard (High-Energy Pop, Chill Lofi, Deep Intense Rock) and four adversarial (conflicting energy+mood, ghost genre, impossible feature combo, all-neutral preferences). For each profile the top 5 results were inspected manually and compared against musical intuition. Two weight experiments were also run: first reducing genre weight from 3.0 to 2.0, then halving it to 1.0 while doubling energy weight to 3.0. The most surprising finding was that reducing genre weight made the High-Energy Pop results more musically accurate — Rooftop Lights (indie pop, happy) correctly rose above Gym Hero (pop, intense) when mood and energy were allowed to compete with genre on more equal terms. The adversarial profiles confirmed that the system fails silently: it always returns 5 results even when the user's preferences are contradictory or entirely absent from the catalog.
+**Profiles tested:** Seven in total — three standard and four adversarial.
+
+| Profile | Top Result | Score | Matched Intuition? |
+|---|---|---|---|
+| High-Energy Pop (pop, happy, energy 0.85) | Sunrise City | 8.86 | Yes |
+| Chill Lofi (lofi, focused, energy 0.40) | Focus Flow | 9.48 | Yes |
+| Deep Intense Rock (rock, intense, energy 0.91) | Storm Runner | 8.98 | Yes |
+| Edge 1: Conflicting energy + sad mood | 3 AM Diner | 6.79 | Partially — right song, wrong energy |
+| Edge 2: Ghost genre (metal) | Storm Runner (rock) | 7.68 | No — silent wrong-genre failure |
+| Edge 3: EDM + fully instrumental | Drop Zone | 8.71 | Partially — right song, wrong instrumentalness |
+| Edge 4: All-neutral preferences | Gravel Road Home | 5.16 | No — arbitrary result |
+
+**What surprised me most:** The High-Energy Pop profile consistently placed Gym Hero (pop, intense) at #2 even though the user wanted *happy* music, not intense. Gym Hero kept appearing because it shares the exact genre label "pop" with the user's preference — and the system rewarded that match regardless of whether the song's mood was right. This felt wrong musically but made complete sense mathematically: the system does not penalize a mood mismatch, it simply gives zero points for it. Genre match and mood match are both positive rewards; there is no punishment for being in the wrong mood. Gym Hero earned its genre points and its energy proximity points, which was enough to outscore happy songs from other genres.
+
+**Weight experiment results:** Running the system with genre=1.0 and energy=3.0 (vs. the original genre=3.0) caused Rooftop Lights (indie pop, happy) to jump from #3 to #2, correctly outranking Gym Hero for the happy pop listener. This confirmed that the Gym Hero problem was not a bug — it was a consequence of genre weight being too high relative to catalog size. The fix made recommendations more accurate without breaking either of the two automated tests.
+
+**Most revealing adversarial result:** The "Middle of Everything" profile (all preferences set to 0.5, no genre specified) returned five songs with scores between 5.16 and 5.02 — a spread of only 0.14 points across all 18 songs. This shows the system has no meaningful signal to work with when preferences are vague, and it cannot tell the user that their query was too weak to produce real recommendations.
 
 ---
 
