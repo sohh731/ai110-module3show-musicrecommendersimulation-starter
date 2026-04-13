@@ -9,9 +9,9 @@ You will implement the functions in recommender.py:
 """
 
 try:
-    from recommender import load_songs, recommend_songs
+    from recommender import load_songs, recommend_songs, SCORING_MODES
 except ModuleNotFoundError:
-    from src.recommender import load_songs, recommend_songs
+    from src.recommender import load_songs, recommend_songs, SCORING_MODES
 
 
 # ---------------------------------------------------------------------------
@@ -117,30 +117,41 @@ vague_user = {
 # ---------------------------------------------------------------------------
 
 
-def print_recommendations(label: str, user_prefs: dict, songs: list, k: int = 3) -> None:
+def print_recommendations(label: str, user_prefs: dict, songs: list,
+                          k: int = 3, mode: str = "balanced") -> None:
     """Prints a clean, readable block of recommendations for one user profile."""
-    recommendations = recommend_songs(user_prefs, songs, k=k)
+    recommendations = recommend_songs(user_prefs, songs, k=k, mode=mode)
 
     print(f"\n{'=' * 60}")
     print(f"  PROFILE : {label}")
+    print(f"  MODE    : {mode.upper()}")
     print(f"  GENRE   : {user_prefs.get('genre', 'any').upper():<10}  "
-          f"MOOD: {user_prefs.get('mood', '—').upper():<10}  "
-          f"ENERGY: {user_prefs.get('target_energy', '—')}")
+          f"MOOD: {user_prefs.get('mood', '-').upper():<10}  "
+          f"ENERGY: {user_prefs.get('target_energy', '-')}")
     print(f"{'=' * 60}")
 
     for rank, (song, score, explanation) in enumerate(recommendations, start=1):
-        # Score bar — 9.5 is the max possible score
-        filled = int((score / 9.5) * 20)
+        filled = int((score / 13.0) * 20)   # 13.0 = max with all advanced features
         bar = "#" * filled + "-" * (20 - filled)
 
         print(f"\n  #{rank}  {song['title']}  -  {song['artist']}")
         print(f"       Genre: {song['genre']:<12}  Mood: {song['mood']:<10}  Energy: {song['energy']}")
-        print(f"       Score: {score:>5.2f} / 9.50  [{bar}]")
+        print(f"       Score: {score:>5.2f}  [{bar}]")
         print(f"       Why:")
         for reason in explanation.split("; "):
             print(f"         * {reason}")
 
     print(f"\n{'-' * 60}")
+
+
+def print_mode_comparison(label: str, user_prefs: dict, songs: list, k: int = 3) -> None:
+    """Runs the same profile under all four scoring modes and prints results side by side."""
+    modes = ["balanced", "genre_first", "mood_first", "energy_focused", "discovery"]
+    print(f"\n{'#' * 60}")
+    print(f"  MODE COMPARISON: {label}")
+    print(f"{'#' * 60}")
+    for mode in modes:
+        print_recommendations(label, user_prefs, songs, k=k, mode=mode)
 
 
 def main() -> None:
@@ -296,6 +307,20 @@ def main() -> None:
     print("#" * 60)
     for label, user_prefs in advanced_profiles.items():
         print_recommendations(label, user_prefs, songs, k=5)
+
+    # -----------------------------------------------------------------------
+    # SCORING MODE COMPARISON
+    # Run the High-Energy Pop profile under all four modes so the effect of
+    # each strategy is visible side by side in the terminal output.
+    # -----------------------------------------------------------------------
+    print("\n" + "#" * 60)
+    print("  SCORING MODE COMPARISON")
+    print("  Same profile (High-Energy Pop) — four different strategies")
+    print("#" * 60)
+    print(f"\n  Available modes: {', '.join(SCORING_MODES.keys())}")
+    print("  Switching modes changes the weight table inside the scorer.")
+    print("  The same 18 songs are scored every time — only the math changes.")
+    print_mode_comparison("High-Energy Pop", high_energy_pop, songs, k=3)
 
 
 if __name__ == "__main__":
