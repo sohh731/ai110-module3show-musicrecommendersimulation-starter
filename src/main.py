@@ -226,6 +226,59 @@ def main() -> None:
         "EDGE 4 — Middle of Everything (all 0.5)": middle_of_everything,
     }
 
+    # -----------------------------------------------------------------------
+    # ADVANCED FEATURE PROFILES
+    # Each profile uses one or more of the five new attributes:
+    #   target_popularity, preferred_decade, preferred_detail_mood,
+    #   target_liveness, target_loudness
+    # -----------------------------------------------------------------------
+
+    # ADVANCED 1: Y2K Nostalgic Jazz Listener
+    # Wants 2000s-era jazz with a nostalgic granular tag and a live-room feel.
+    # preferred_decade=2000 rewards Coffee Shop Stories (jazz, 2000, nostalgic)
+    # and penalizes 2020s releases by 0.5 points.
+    # target_liveness=0.4 rewards the slight live feel of Coffee Shop Stories (0.45).
+    y2k_jazz = {
+        "genre": "jazz",
+        "mood": "relaxed",
+        "target_energy": 0.35,
+        "target_valence": 0.70,
+        "likes_acoustic": True,
+        "target_acousticness": 0.85,
+        "target_instrumentalness": 0.70,
+        "target_speechiness": 0.04,
+        "preferred_decade": 2000,
+        "preferred_detail_mood": "nostalgic",
+        "target_liveness": 0.40,
+        "target_loudness": 0.40,
+    }
+
+    # ADVANCED 2: Underground Aggressive Hip-Hop
+    # Wants low-popularity (underground) tracks with an aggressive detail mood
+    # and loud/dynamic sound. target_popularity=30 penalizes mainstream songs
+    # like Gym Hero (81) and rewards less-known catalog entries.
+    # preferred_detail_mood="aggressive" adds +1.5 for Block by Block and Storm Runner.
+    underground_hiphop = {
+        "genre": "hip-hop",
+        "mood": "motivated",
+        "target_energy": 0.80,
+        "target_valence": 0.65,
+        "likes_acoustic": False,
+        "target_acousticness": 0.10,
+        "target_instrumentalness": 0.05,
+        "target_speechiness": 0.25,
+        "target_popularity": 30,
+        "preferred_decade": 2010,
+        "preferred_detail_mood": "aggressive",
+        "target_liveness": 0.10,
+        "target_loudness": 0.85,
+    }
+
+    advanced_profiles = {
+        "ADVANCED 1 — Y2K Nostalgic Jazz (2000s era, live feel)": y2k_jazz,
+        "ADVANCED 2 — Underground Aggressive Hip-Hop (low popularity)": underground_hiphop,
+    }
+
     print("\n" + "#" * 60)
     print("  STANDARD PROFILES")
     print("#" * 60)
@@ -236,6 +289,12 @@ def main() -> None:
     print("  ADVERSARIAL / EDGE CASE PROFILES")
     print("#" * 60)
     for label, user_prefs in adversarial_profiles.items():
+        print_recommendations(label, user_prefs, songs, k=5)
+
+    print("\n" + "#" * 60)
+    print("  ADVANCED FEATURE PROFILES")
+    print("#" * 60)
+    for label, user_prefs in advanced_profiles.items():
         print_recommendations(label, user_prefs, songs, k=5)
 
 

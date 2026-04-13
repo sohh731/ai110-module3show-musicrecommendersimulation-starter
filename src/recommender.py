@@ -6,34 +6,44 @@ import csv
 # ALGORITHM RECIPE — WEIGHT TABLE
 #
 # Each weight controls the maximum points a feature can contribute to a score.
-# The total possible score for a perfect match across all features is 10.0.
 #
-# Why these values:
-#   genre (3.0)            -- strongest signal; a genre mismatch is jarring
-#   mood  (2.0)            -- second strongest; sets the listening context
-#   energy (1.5)           -- best single numerical proxy for "vibe intensity"
+# Original features:
+#   genre (1.0)            -- categorical; mismatch scores zero, not negative
+#   mood  (2.0)            -- second strongest categorical signal
+#   energy (3.0)           -- best single numerical proxy for "vibe intensity"
 #   acousticness (1.0)     -- separates organic (folk/jazz) from electronic (EDM/synth)
 #   instrumentalness (1.0) -- separates background listening from vocal tracks
 #   valence (0.5)          -- fine-tunes emotional tone (dark vs. upbeat)
 #   speechiness (0.5)      -- separates rap/spoken-word from sung tracks
 #   acoustic_bonus (0.5)   -- small bonus when user just wants "acoustic" (bool pref)
 #
-# Maximum possible score breakdown:
-#   3.0 + 2.0 + 1.5 + 1.0 + 1.0 + 0.5 + 0.5 = 9.5  (no acoustic_bonus path)
-#   3.0 + 2.0 + 1.5 + 0.5 + 1.0 + 0.5 + 0.5 = 9.0  (acoustic_bonus path)
+# Advanced features (new):
+#   popularity (0.5)       -- proximity to user's target mainstream appeal (0-100)
+#   decade (1.0)           -- decay-based era match; loses 0.25 pts per decade apart
+#   detail_mood (1.5)      -- granular tag match (e.g. "euphoric", "aggressive")
+#   liveness (0.5)         -- proximity: 1.0 = live concert feel, 0.0 = studio clean
+#   loudness (0.5)         -- proximity: 1.0 = loud/dynamic, 0.0 = quiet/gentle
+#
+# Max possible score (all optional features active, target_acousticness path):
+#   1.0 + 2.0 + 3.0 + 1.0 + 1.0 + 0.5 + 0.5 + 0.5 + 1.0 + 1.5 + 0.5 + 0.5 = 13.0
 # ---------------------------------------------------------------------------
 
 WEIGHTS = {
-    "genre":           1.0,  # EXPERIMENT: halved (was 2.0) -- testing sensitivity
+    "genre":           1.0,
     "mood":            2.0,
-    "energy":          3.0,  # EXPERIMENT: doubled (was 1.5) -- testing sensitivity
+    "energy":          3.0,
     "acousticness":    1.0,
     "instrumentalness":1.0,
     "valence":         0.5,
     "speechiness":     0.5,
     "acoustic_bonus":  0.5,
+    # --- Advanced features ---
+    "popularity":      0.5,   # proximity on normalized 0-1 scale
+    "decade":          1.0,   # decay: -0.25 per decade away from preferred era
+    "detail_mood":     1.5,   # exact tag match only; no partial credit
+    "liveness":        0.5,   # proximity: studio (0) vs. live (1)
+    "loudness":        0.5,   # proximity: quiet (0) vs. loud/dynamic (1)
 }
-# Max possible score: 1.0 + 2.0 + 3.0 + 1.0 + 1.0 + 0.5 + 0.5 = 9.0
 
 
 # ---------------------------------------------------------------------------
@@ -53,8 +63,14 @@ class Song:
     valence: float
     danceability: float
     acousticness: float
-    speechiness: float = 0.05       # default: typical sung track
-    instrumentalness: float = 0.0   # default: has vocals
+    speechiness: float = 0.05        # default: typical sung track
+    instrumentalness: float = 0.0    # default: has vocals
+    # Advanced features
+    popularity: float = 50.0         # mainstream appeal score, 0-100
+    release_decade: float = 2010.0   # e.g. 1990.0, 2000.0, 2010.0, 2020.0
+    detail_mood: str = ""            # granular tag: euphoric, aggressive, peaceful, etc.
+    liveness: float = 0.10           # 0 = studio clean, 1 = live concert feel
+    loudness: float = 0.60           # 0 = quiet/gentle, 1 = loud/dynamic
 
 
 @dataclass
@@ -64,11 +80,17 @@ class UserProfile:
     favorite_mood: str
     target_energy: float
     likes_acoustic: bool
-    # Optional fine-tuning preferences (None = not specified, skip that feature)
+    # Optional original fine-tuning (None = not specified, skip that feature)
     target_valence: Optional[float] = None
     target_acousticness: Optional[float] = None
     target_instrumentalness: Optional[float] = None
     target_speechiness: Optional[float] = None
+    # Optional advanced preferences (None = not specified, skip that feature)
+    target_popularity: Optional[float] = None      # 0-100; low = underground, high = mainstream
+    preferred_decade: Optional[float] = None       # e.g. 2000.0 for Y2K era vibes
+    preferred_detail_mood: Optional[str] = None    # exact granular tag to match
+    target_liveness: Optional[float] = None        # 0 = studio, 1 = live
+    target_loudness: Optional[float] = None        # 0 = quiet, 1 = loud
 
 
 # ---------------------------------------------------------------------------
@@ -83,8 +105,12 @@ def _proximity(target: float, actual: float, weight: float) -> Tuple[float, floa
 
 
 def _score_core(
+    # Song attributes
     genre: str, mood: str, energy: float, acousticness: float,
     instrumentalness: float, valence: float, speechiness: float,
+    popularity: float, release_decade: float, detail_mood: str,
+    liveness: float, loudness: float,
+    # User preferences
     user_genre: str, user_mood: str,
     target_energy: Optional[float],
     target_acousticness: Optional[float],
@@ -92,12 +118,18 @@ def _score_core(
     target_instrumentalness: Optional[float],
     target_valence: Optional[float],
     target_speechiness: Optional[float],
+    # Advanced user preferences
+    target_popularity: Optional[float],
+    preferred_decade: Optional[float],
+    preferred_detail_mood: Optional[str],
+    target_liveness: Optional[float],
+    target_loudness: Optional[float],
 ) -> Tuple[float, List[str]]:
     """Shared scoring logic used by both the OOP and functional interfaces."""
     score = 0.0
     reasons: List[str] = []
 
-    # --- Categorical: Genre (+3.0 max) ---
+    # --- Categorical: Genre (+1.0 max) ---
     if user_genre not in ("any", "") and genre == user_genre:
         score += WEIGHTS["genre"]
         reasons.append(f"genre match '{genre}' (+{WEIGHTS['genre']})")
@@ -107,7 +139,7 @@ def _score_core(
         score += WEIGHTS["mood"]
         reasons.append(f"mood match '{mood}' (+{WEIGHTS['mood']})")
 
-    # --- Numerical: Energy proximity (+1.5 max) ---
+    # --- Numerical: Energy proximity (+3.0 max) ---
     if target_energy is not None:
         pts, ratio = _proximity(target_energy, energy, WEIGHTS["energy"])
         score += pts
@@ -141,6 +173,46 @@ def _score_core(
         score += pts
         reasons.append(f"speechiness proximity {ratio:.2f} (+{pts})")
 
+    # --- ADVANCED: Popularity proximity (+0.5 max) ---
+    # Normalize both values to 0-1 range before applying proximity.
+    # target_popularity=20 means "underground"; target_popularity=80 means "mainstream".
+    if target_popularity is not None:
+        pop_ratio = max(0.0, 1.0 - abs(target_popularity - popularity) / 100.0)
+        pts = round(WEIGHTS["popularity"] * pop_ratio, 2)
+        score += pts
+        reasons.append(f"popularity proximity {pop_ratio:.2f} (+{pts})")
+
+    # --- ADVANCED: Decade preference — decay-based (+1.0 max) ---
+    # Exact decade match = full 1.0 points.
+    # Each decade away loses 0.25 points (4+ decades away = 0 points).
+    # E.g. preferred=2000, actual=2010 -> 1 decade apart -> 0.75 points.
+    if preferred_decade is not None:
+        decades_apart = abs(int(preferred_decade) - int(release_decade)) // 10
+        decade_ratio = max(0.0, 1.0 - 0.25 * decades_apart)
+        pts = round(WEIGHTS["decade"] * decade_ratio, 2)
+        score += pts
+        reasons.append(f"decade score {decade_ratio:.2f} ({int(release_decade)}s) (+{pts})")
+
+    # --- ADVANCED: Detail mood exact match (+1.5 max) ---
+    # More specific than the broad mood tag. No partial credit.
+    if preferred_detail_mood and detail_mood == preferred_detail_mood:
+        score += WEIGHTS["detail_mood"]
+        reasons.append(f"detail mood match '{detail_mood}' (+{WEIGHTS['detail_mood']})")
+
+    # --- ADVANCED: Liveness proximity (+0.5 max) ---
+    # 0.0 = pure studio recording, 1.0 = live concert feel.
+    if target_liveness is not None:
+        pts, ratio = _proximity(target_liveness, liveness, WEIGHTS["liveness"])
+        score += pts
+        reasons.append(f"liveness proximity {ratio:.2f} (+{pts})")
+
+    # --- ADVANCED: Loudness proximity (+0.5 max) ---
+    # 0.0 = quiet/gentle, 1.0 = loud/dynamic/hard-hitting.
+    if target_loudness is not None:
+        pts, ratio = _proximity(target_loudness, loudness, WEIGHTS["loudness"])
+        score += pts
+        reasons.append(f"loudness proximity {ratio:.2f} (+{pts})")
+
     return round(score, 2), reasons
 
 
@@ -162,6 +234,9 @@ class Recommender:
             energy=song.energy, acousticness=song.acousticness,
             instrumentalness=song.instrumentalness,
             valence=song.valence, speechiness=song.speechiness,
+            popularity=song.popularity, release_decade=song.release_decade,
+            detail_mood=song.detail_mood, liveness=song.liveness,
+            loudness=song.loudness,
             user_genre=user.favorite_genre, user_mood=user.favorite_mood,
             target_energy=user.target_energy,
             target_acousticness=user.target_acousticness,
@@ -169,6 +244,11 @@ class Recommender:
             target_instrumentalness=user.target_instrumentalness,
             target_valence=user.target_valence,
             target_speechiness=user.target_speechiness,
+            target_popularity=user.target_popularity,
+            preferred_decade=user.preferred_decade,
+            preferred_detail_mood=user.preferred_detail_mood,
+            target_liveness=user.target_liveness,
+            target_loudness=user.target_loudness,
         )
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
@@ -190,8 +270,10 @@ class Recommender:
 def load_songs(csv_path: str) -> List[Dict]:
     """Loads songs from a CSV file, converting numeric fields to float."""
     numeric_fields = {
-        "id", "energy", "tempo_bpm", "valence",
-        "danceability", "acousticness", "speechiness", "instrumentalness",
+        "id", "energy", "tempo_bpm", "valence", "danceability",
+        "acousticness", "speechiness", "instrumentalness",
+        # Advanced numeric fields
+        "popularity", "release_decade", "liveness", "loudness",
     }
     songs = []
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -213,6 +295,11 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
         instrumentalness=float(song.get("instrumentalness", 0.0)),
         valence=float(song.get("valence", 0.5)),
         speechiness=float(song.get("speechiness", 0.05)),
+        popularity=float(song.get("popularity", 50.0)),
+        release_decade=float(song.get("release_decade", 2010.0)),
+        detail_mood=song.get("detail_mood", ""),
+        liveness=float(song.get("liveness", 0.10)),
+        loudness=float(song.get("loudness", 0.60)),
         user_genre=user_prefs.get("genre", "any"),
         user_mood=user_prefs.get("mood", ""),
         target_energy=user_prefs.get("target_energy"),
@@ -221,6 +308,11 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
         target_instrumentalness=user_prefs.get("target_instrumentalness"),
         target_valence=user_prefs.get("target_valence"),
         target_speechiness=user_prefs.get("target_speechiness"),
+        target_popularity=user_prefs.get("target_popularity"),
+        preferred_decade=user_prefs.get("preferred_decade"),
+        preferred_detail_mood=user_prefs.get("preferred_detail_mood"),
+        target_liveness=user_prefs.get("target_liveness"),
+        target_loudness=user_prefs.get("target_loudness"),
     )
 
 
