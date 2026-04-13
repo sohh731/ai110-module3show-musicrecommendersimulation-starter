@@ -24,15 +24,16 @@ import csv
 # ---------------------------------------------------------------------------
 
 WEIGHTS = {
-    "genre":           3.0,
+    "genre":           1.0,  # EXPERIMENT: halved (was 2.0) -- testing sensitivity
     "mood":            2.0,
-    "energy":          1.5,
+    "energy":          3.0,  # EXPERIMENT: doubled (was 1.5) -- testing sensitivity
     "acousticness":    1.0,
     "instrumentalness":1.0,
     "valence":         0.5,
     "speechiness":     0.5,
     "acoustic_bonus":  0.5,
 }
+# Max possible score: 1.0 + 2.0 + 3.0 + 1.0 + 1.0 + 0.5 + 0.5 = 9.0
 
 
 # ---------------------------------------------------------------------------
