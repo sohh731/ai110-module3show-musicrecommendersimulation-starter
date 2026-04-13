@@ -20,7 +20,16 @@ It is not trying to learn from behavior or listening history. It only works with
 
 The catalog has 18 songs.
 
-Each song has 10 features: genre, mood, energy, tempo, valence, danceability, acousticness, speechiness, and instrumentalness.
+Each song has 17 features total: 12 original features plus 5 advanced features added during development.
+
+**Original features:** genre, mood, energy, tempo, valence, danceability, acousticness, speechiness, instrumentalness, id, title, artist.
+
+**Advanced features added (Challenge 1):**
+- `popularity` (0–100) — mainstream appeal score
+- `release_decade` (1970–2020) — era of the song
+- `detail_mood` — granular mood tag (e.g. euphoric, aggressive, peaceful, nostalgic, melancholic)
+- `liveness` (0–1) — studio clean (0) vs. live concert feel (1)
+- `loudness` (0–1) — quiet/gentle (0) vs. loud/dynamic (1)
 
 Genres in the catalog: pop, lofi, rock, ambient, jazz, synthwave, indie pop, hip-hop, R&B, classical, country, EDM, folk, reggae, and blues.
 
@@ -48,7 +57,7 @@ The score has two types of checks:
 - The closer the match, the more points the song earns. A perfect match earns the full weight. A gap of 1.0 earns zero.
 - Formula: `points = weight × (1.0 - |target - actual|)`
 
-**Weights (how much each feature is worth):**
+**Weights — original features:**
 
 | Feature | Max Points |
 |---|---|
@@ -60,7 +69,32 @@ The score has two types of checks:
 | Valence proximity | 0.5 |
 | Speechiness proximity | 0.5 |
 
-**Maximum possible score: 9.0 points.**
+**Weights — advanced features (optional; only active when user specifies them):**
+
+| Feature | Max Points | Scoring rule |
+|---|---|---|
+| Popularity proximity | 0.5 | Normalized 0–1 before proximity formula |
+| Decade preference | 1.0 | Exact match = 1.0; loses 0.25 pts per decade away |
+| Detail mood match | 1.5 | Exact tag match only; no partial credit |
+| Liveness proximity | 0.5 | Standard proximity formula |
+| Loudness proximity | 0.5 | Standard proximity formula |
+
+**Maximum possible score: 13.0 points** (all optional features active).
+**Baseline score (no advanced features): 9.0 points.**
+
+**Scoring modes (Challenge 2 — Strategy pattern):**
+The system supports four interchangeable ranking strategies. Each mode is a partial weight override merged onto the baseline at score time — no duplicated logic.
+
+| Mode | Key change | Best for |
+|---|---|---|
+| `balanced` | baseline weights | general use (default) |
+| `genre_first` | genre boosted to 4.0 | strict genre purists |
+| `mood_first` | mood boosted to 4.0, detail_mood to 3.0 | vibe seekers who don't care about genre |
+| `energy_focused` | energy boosted to 6.0 | intensity matching (workout vs. study) |
+| `discovery` | genre and decade zeroed out | open exploration across all genres |
+
+**Diversity re-ranking (Challenge 3):**
+After scoring, a greedy re-ranking pass applies an artist penalty (default 0.5×) and genre penalty (default 0.8×) for each repeat in the top-k. This prevents all slots from being filled by the same artist or genre. The penalty is shown in the explanation string so it is transparent.
 
 After every song is scored, they are sorted from highest to lowest. The top results are returned with an explanation of which features contributed points.
 
@@ -72,7 +106,7 @@ After every song is scored, they are sorted from highest to lowest. The top resu
 With only one rock song in the catalog, a rock fan gets Storm Runner as #1 and then falls off a cliff. Songs from completely unrelated genres fill spots #2 through #5. The system looks confident but positions #3–#5 are basically random noise.
 
 **No penalty for a bad mood match.**
-The system rewards a genre match but never punishes a mood mismatch. A pop song with the wrong mood (intense instead of happy) still earns its genre points and energy points. This caused Gym Hero (pop, intense) to outrank Rooftop Lights (indie pop, happy) for a user who wanted happy music — until the genre weight was reduced.
+The system rewards a genre match but never punishes a mood mismatch. A pop song with the wrong mood (intense instead of happy) still earns its genre points and energy points. This caused Gym Hero (pop, intense) to outrank Rooftop Lights (indie pop, happy) for a user who wanted happy music — until the genre weight was reduced from 3.0 to 1.0.
 
 **Ghost genre — silent failure.**
 If the user asks for a genre that does not exist in the catalog (like "metal"), every song scores zero genre points. The system quietly falls back to mood and energy and returns confident-looking results. It never tells the user their genre preference was completely ignored.
@@ -80,8 +114,8 @@ If the user asks for a genre that does not exist in the catalog (like "metal"), 
 **Calm preferences are penalized more.**
 A user who wants energy 0.10 loses a lot more points on high-energy songs than a user who wants energy 0.50. The proximity formula treats the gap as linear, but for very extreme preferences, the system consistently struggles to find a good match.
 
-**No variety enforcement.**
-The ranking rule just picks the top-k highest-scoring songs. For the Chill Lofi profile, all three top results are lofi songs by the same artist (LoRoom). A real recommender would try to avoid repeating the same artist.
+**Artist repeat problem — identified and fixed.**
+Without diversity enforcement, all top slots can go to the same artist. For the Chill Lofi profile, the top three results were all LoRoom songs. This was fixed in Challenge 3 with a greedy diversity re-ranker: each additional song by the same artist has its effective score halved (artist_penalty=0.5). The fix works — with diversity ON, the top 5 Chill Lofi results span jazz, ambient, folk, and classical rather than three identical lofi tracks.
 
 ---
 
@@ -108,12 +142,18 @@ Reducing genre weight from 3.0 to 1.0 and increasing energy weight from 1.5 to 3
 **Most revealing adversarial test:**
 The all-neutral profile (every preference at 0.5, no genre set) returned five songs within 0.14 points of each other. The system had no meaningful signal to work with and returned an essentially arbitrary result.
 
+**Scoring mode comparison (Challenge 2):**
+Running the same High-Energy Pop profile under all four modes showed clear differences. `genre_first` immediately pushed Gym Hero back to #2 (genre dominates). `mood_first` surfaced all three happy-mood songs in the top 3. `energy_focused` ranked by intensity alone — Gym Hero (0.93) and Storm Runner (0.91) climbed because their energy was closest to 0.85. `discovery` (genre=0) produced the most surprising results: songs from reggae and ambient appeared that would never surface under normal genre filtering.
+
+**Diversity re-ranking (Challenge 3):**
+Before diversity enforcement: Chill Lofi top-2 were both LoRoom. After: LoRoom gets slot #1, then Coffee Shop Stories (jazz), Spacewalk Thoughts (ambient), Library Rain (paper lanterns — penalized, raw=6.72), and Autumn Sonata (classical) fill the rest. Four different artists and four different genres in five slots.
+
 ---
 
 ## 7. Intended Use and Non-Intended Use
 
 **Intended use:**
-This system is for classroom exploration of how content-based recommender systems work. It is designed to show students how weighted scoring, feature matching, and catalog limitations affect the results a system returns.
+This system is for classroom exploration of how content-based recommender systems work. It is designed to show students how weighted scoring, feature matching, scoring modes, diversity enforcement, and catalog limitations affect the results a system returns.
 
 It works best when a user has clear, specific preferences and their preferred genre exists in the catalog.
 
@@ -131,14 +171,17 @@ It works best when a user has clear, specific preferences and their preferred ge
 **1. Expand the catalog.**
 The most important fix is adding more songs — at least 10 per genre. Right now, genre filtering produces one result and then noise. With a bigger catalog, genre filtering would produce a meaningful shortlist that mood and energy could refine.
 
-**2. Add a diversity enforcement step.**
-The ranking rule should limit how many times the same artist can appear in the top 5. Right now, all three lofi recommendations are by LoRoom. A simple "no more than one song per artist" rule would fix this.
+**2. Diversity enforcement — implemented, but tuning needed.**
+The artist and genre diversity re-ranker was built (Challenge 3). It works — it breaks up the LoRoom monopoly in the Chill Lofi profile. But the default penalties (artist=0.5, genre=0.8) were chosen by intuition, not by testing. A better version would let users control these values, or learn them from feedback.
 
 **3. Warn the user when their genre has no matches.**
 Before scoring, check whether the user's genre exists in the catalog. If it does not, tell the user instead of silently falling back. Something like "No songs found for genre: metal — showing closest matches by mood and energy instead" would be far more honest than returning confident-looking wrong results.
 
 **4. Replace single energy target with a range.**
 Let users say "energy between 0.6 and 0.9" instead of a single point. This would reduce the penalty for extreme preferences and let users express "somewhere in this zone" rather than a precise number.
+
+**5. Add a mood-mismatch penalty.**
+Right now the system only rewards correct matches — it never punishes wrong ones. Adding a small negative score for a mood mismatch would push songs like Gym Hero (wrong mood) down the list without having to reduce the genre weight as a workaround.
 
 ---
 
